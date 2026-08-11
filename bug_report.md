@@ -32,9 +32,15 @@ price down with tax-tier-limited split sells — force the treasury to liquidate
 a price the attacker controls, capturing the difference at roughly zero net capital.
 
 A second, independent bug lets **any account permanently disable selling for every holder** by
-transferring **3 base units** of the token to the treasury handler, because a dust balance routes a
-zero-output swap into the router, which reverts and propagates into every seller's transfer. The
-contract's own recovery function refuses to clear the condition.
+leaving a precisely-sized **dust** balance in the treasury handler (the exact size is computed from
+the live reserves — e.g. 100 base units at the tested thin-pool reserves, often as little as 1 unit),
+because a dust balance routes a zero-output swap into the router, which reverts and propagates into
+every seller's transfer. The contract's own recovery function refuses to clear the condition.
+
+> **A runnable PoC is included:** `audit/poc/floki_poc.py` (Python 3, standard library only,
+> `python3 floki_poc.py`). It is a faithful integer-level simulation of the contract logic that
+> reproduces both findings deterministically — including an honest negative control showing Finding 2
+> does *not* trigger on a deep pool. See `audit/poc/README.md`.
 
 ---
 
@@ -134,7 +140,10 @@ seller's `transferFrom`.
 
 ### Exploit
 ```solidity
-token.transfer(treasuryHandlerAddress, 3);   // ordinary untaxed transfer, ~21k gas
+// `dust` is the largest amount whose swap output floors to 0 at the live reserves (computed, not
+// fixed — 100 base units at the tested thin-pool reserves; often 1). Treasury must be near-empty,
+// which Finding 1 or any ordinary sell that clears the treasury produces naturally.
+token.transfer(treasuryHandlerAddress, dust);   // ordinary untaxed transfer, ~21k gas
 ```
 Every subsequent **sell** by every holder now reverts. **Buys and wallet transfers still succeed** —
 the classic honeypot signature. The state is not self-clearable: selling the dust *is* the reverting
@@ -144,6 +153,11 @@ recovers — and if ownership was renounced, the freeze is **irreversible**.
 
 ### Impact
 Permanent, permissionless denial of the sell path for the entire holder base, for the cost of dust.
+**Condition:** exploitable when the ETH-side reserve is small enough relative to the FLOKI-side
+reserve that `getAmountOut(dust)` floors to zero — i.e. thin-liquidity / low-price pools (launch,
+low-cap), with the treasury near-empty. The PoC includes a negative control confirming it does *not*
+trigger on a deep, higher-price pool. The fix is warranted regardless, since the contract cannot
+guarantee it will never be in the vulnerable regime.
 
 ### Recommended fix
 Skip (never revert) when the amount to swap is below a non-zero `minimumSwapThreshold`; wrap treasury
