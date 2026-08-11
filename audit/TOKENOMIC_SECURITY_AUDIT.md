@@ -37,6 +37,14 @@ missing access-control modifier:
 
 ### Findings
 
+> **Severities below are standalone ratings.** A companion pass in
+> [`ESCALATION_CHAINS.md`](./ESCALATION_CHAINS.md) analyses how these findings compose, and re-rates
+> seven of them upward on the strength of a demonstrated chain — including one **new Critical**
+> (X-01: anyone can permanently freeze all sells by sending dust to the treasury handler) that none
+> of the individual findings, nor the fixes proposed for them here, covers. Escalated ratings are
+> marked in the table below. That document also **corrects the L-02 fix recommended here** — do not
+> remove `view` from `ITaxHandler.getTax` as written.
+
 | ID | Severity | Title | Location |
 |----|----------|-------|----------|
 | [C-01](#c-01) | Critical | `beforeTransferHandler` is permissionless — anyone can force a 0-slippage treasury dump | `TreasuryHandlerAlpha.sol:77` |
@@ -44,23 +52,23 @@ missing access-control modifier:
 | [C-03](#c-03) | Critical | `priceImpactBasisPoints = 0` or unset `primaryPool` makes every sell revert | `TreasuryHandlerAlpha.sol:91-99`, `:176-186` |
 | [H-01](#h-01) | High | `amountOutMin = 0` and `0/0` liquidity minimums on every router call | `TreasuryHandlerAlpha.sol:226-255` |
 | [H-02](#h-02) | High | `transferFrom` validates the allowance *after* executing the transfer | `Floki.sol:169-186` |
-| [H-03](#h-03) | High | Owner-settable `treasury` that reverts on receive freezes all sells | `TreasuryHandlerAlpha.sol:132`, `:192-202` |
+| [H-03](#h-03) | High → **Critical** ([X-02](./ESCALATION_CHAINS.md#x-02)) | Owner-settable `treasury` that reverts on receive freezes all sells | `TreasuryHandlerAlpha.sol:132`, `:192-202` |
 | [H-04](#h-04) | High | `withdraw()` ERC-20 branch always reverts — rescued tokens are unrecoverable | `TreasuryHandlerAlpha.sol:209-220` |
 | [H-05](#h-05) | High | `ExponentialTaxHandler` charges 81% on all sells when `primaryPool` is unset; no setter exists | `ExponentialTaxHandler.sol:70-80` |
-| [M-01](#m-01) | Medium | Anti-whale tiers are per-transaction and trivially bypassed by splitting | `ExponentialTaxHandler.sol:72-80` |
-| [M-02](#m-02) | Medium | Treasury front-runs the user's own sell, reverting honest slippage-protected trades | `TreasuryHandlerAlpha.sol:77-135` |
+| [M-01](#m-01) | Medium → **Critical** ([X-03](./ESCALATION_CHAINS.md#x-03)) | Anti-whale tiers are per-transaction and trivially bypassed by splitting | `ExponentialTaxHandler.sol:72-80` |
+| [M-02](#m-02) | Medium → **High** ([X-05](./ESCALATION_CHAINS.md#x-05)) | Treasury front-runs the user's own sell, reverting honest slippage-protected trades | `TreasuryHandlerAlpha.sol:77-135` |
 | [M-03](#m-03) | Medium | `StaticTaxHandler` constructor has no upper bound; >10,000 bp bricks all taxed transfers | `StaticTaxHandler.sol:34-36` |
-| [M-04](#m-04) | Medium | `addExchangePool` can designate an ordinary wallet, enabling targeted taxation | `ExchangePoolProcessor.sol:42-46` |
-| [M-05](#m-05) | Medium | Tax exemptions are not externally readable | `StaticTaxHandler.sol:20`, `ExponentialTaxHandler.sol:21` |
-| [M-06](#m-06) | Medium | Treasury handler is not tax-exempt by default; leaks ETH to LPs on every liquidity add | `scripts/deploy-floki.ts:38-47` |
-| [M-07](#m-07) | Medium | `renounceOwnership` can permanently brick a misconfigured deployment | all `Ownable` contracts |
-| [L-01](#l-01) | Low | `require(amount > 0)` violates ERC-20 and breaks integrations | `Floki.sol:442` |
+| [M-04](#m-04) | Medium → **Critical** ([X-04](./ESCALATION_CHAINS.md#x-04)) | `addExchangePool` can designate an ordinary wallet, enabling targeted taxation | `ExchangePoolProcessor.sol:42-46` |
+| [M-05](#m-05) | Medium → **High** ([X-06](./ESCALATION_CHAINS.md#x-06)) | Tax exemptions are not externally readable | `StaticTaxHandler.sol:20`, `ExponentialTaxHandler.sol:21` |
+| [M-06](#m-06) | Medium → **High** ([X-06](./ESCALATION_CHAINS.md#x-06)) | Treasury handler is not tax-exempt by default; leaks ETH to LPs on every liquidity add | `scripts/deploy-floki.ts:38-47` |
+| [M-07](#m-07) | Medium → **Critical amplifier** ([X-07](./ESCALATION_CHAINS.md#x-07)) | `renounceOwnership` can permanently brick a misconfigured deployment | all `Ownable` contracts |
+| [L-01](#l-01) | Low → **Critical** ([X-01](./ESCALATION_CHAINS.md#x-01)) | `require(amount > 0)` violates ERC-20 and breaks integrations | `Floki.sol:442` |
 | [L-02](#l-02) | Low | `ITaxHandler.getTax` is `view`, structurally preventing stateful anti-whale logic | `ITaxHandler.sol:16-20` |
 | [L-03](#l-03) | Low | `afterTransferHandler` burns ~5,000 gas per transfer to do nothing | `TreasuryHandlerAlpha.sol:143-154` |
 | [L-04](#l-04) | Low | Residual router allowance after `_addLiquidity` | `TreasuryHandlerAlpha.sol:244` |
 | [L-05](#l-05) | Low | Liquidity ETH split over-allocates relative to the documented formula | `TreasuryHandlerAlpha.sol:113-122` |
 | [L-06](#l-06) | Low | Tokens sent to the token contract itself are permanently lost | `Floki.sol:441` |
-| [L-07](#l-07) | Low | Single-step `transferOwnership`; no `IERC20Metadata`; `ecrecover` malleability | various |
+| [L-07](#l-07) | Low (lenient guard → **Critical** via [X-02](./ESCALATION_CHAINS.md#x-02)) | Single-step `transferOwnership`; no `IERC20Metadata`; `ecrecover` malleability | various |
 
 ---
 
