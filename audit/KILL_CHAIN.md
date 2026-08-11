@@ -15,6 +15,13 @@ the exact line, the state it changes, and **the mechanism that hands control to 
 > about `UniswapV2Router02` / `UniswapV2Pair` internals are reasoned from the canonical published
 > source (`node_modules` is not installed here).
 
+> **Refined in the deep dive.** HOPs 2-3 below present the extraction as a simple
+> "sell → trigger → buy" atomic sandwich. Because the treasury hook is a *pre-transfer* hook, the
+> first forced dump actually prices at ~fair value, and the anti-whale tax forces the attacker into
+> split sells — so the real extraction is driven by the *later* tranches after the price is walked
+> down. [`ATTACK_CHAIN_DEEPDIVE.md`](./ATTACK_CHAIN_DEEPDIVE.md) traces the corrected mechanism at
+> the EVM level with a worked P&L. The conclusion here is unchanged.
+
 ---
 
 ## Threat model
